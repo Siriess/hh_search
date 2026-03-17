@@ -8,7 +8,7 @@ on:
 # Тег релиза: дата + номер запуска, например v2026.03.13-42
 env:
   RELEASE_TAG: v${{ github.run_number }}
-  RELEASES_REPO: Siriess/hh_search-releases
+  RELEASES_REPO: Siriess/hh_search-release
 
 jobs:
   # ── Windows ────────────────────────────────────────────────────────────────
