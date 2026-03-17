@@ -5,6 +5,11 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+# Тег релиза: дата + номер запуска, например v2026.03.13-42
+env:
+  RELEASE_TAG: v${{ github.run_number }}
+  RELEASES_REPO: Siriess/hh_search-releases
+
 jobs:
   # ── Windows ────────────────────────────────────────────────────────────────
   build-windows:
@@ -29,16 +34,25 @@ jobs:
             --dart-define=HH_CLIENT_ID=${{ secrets.HH_CLIENT_ID }} `
             --dart-define=HH_CLIENT_SECRET=${{ secrets.HH_CLIENT_SECRET }}
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: hh_search_windows
-          path: build/windows/x64/runner/Release/
-          retention-days: 30
+      - name: Zip Windows build
+        run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath hh_search_windows.zip
+
+      - name: Publish Windows to public releases repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+        run: |
+          gh release create ${{ env.RELEASE_TAG }} `
+            --repo ${{ env.RELEASES_REPO }} `
+            --title "Build #${{ github.run_number }}" `
+            --notes "Автоматическая сборка. Windows + macOS." `
+            hh_search_windows.zip `
+            || gh release upload ${{ env.RELEASE_TAG }} hh_search_windows.zip `
+               --repo ${{ env.RELEASES_REPO }} --clobber
 
   # ── macOS ──────────────────────────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
+    needs: build-windows
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -63,10 +77,11 @@ jobs:
         run: |
           cd build/macos/Build/Products/Release
           zip -r hh_search_macos.zip hh_search.app
+          mv hh_search_macos.zip $GITHUB_WORKSPACE/
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: hh_search_macos
-          path: build/macos/Build/Products/Release/hh_search_macos.zip
-          retention-days: 30
+      - name: Publish macOS to public releases repo
+        env:
+          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+        run: |
+          gh release upload ${{ env.RELEASE_TAG }} hh_search_macos.zip \
+            --repo ${{ env.RELEASES_REPO }} --clobber
