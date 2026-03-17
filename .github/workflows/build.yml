@@ -5,15 +5,15 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
-# Тег релиза: дата + номер запуска, например v2026.03.13-42
 env:
   RELEASE_TAG: v${{ github.run_number }}
-  RELEASES_REPO: Siriess/hh_search-release
 
 jobs:
   # ── Windows ────────────────────────────────────────────────────────────────
   build-windows:
     runs-on: windows-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -37,22 +37,22 @@ jobs:
       - name: Zip Windows build
         run: Compress-Archive -Path build\windows\x64\runner\Release\* -DestinationPath hh_search_windows.zip
 
-      - name: Publish Windows to public releases repo
+      - name: Create Release and upload Windows
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create ${{ env.RELEASE_TAG }} `
-            --repo ${{ env.RELEASES_REPO }} `
             --title "Build #${{ github.run_number }}" `
-            --notes "Автоматическая сборка. Windows + macOS." `
+            --notes "Автоматическая сборка Windows + macOS." `
             hh_search_windows.zip `
-            || gh release upload ${{ env.RELEASE_TAG }} hh_search_windows.zip `
-               --repo ${{ env.RELEASES_REPO }} --clobber
+            || gh release upload ${{ env.RELEASE_TAG }} hh_search_windows.zip --clobber
 
   # ── macOS ──────────────────────────────────────────────────────────────────
   build-macos:
     runs-on: macos-latest
     needs: build-windows
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -79,9 +79,8 @@ jobs:
           zip -r hh_search_macos.zip hh_search.app
           mv hh_search_macos.zip $GITHUB_WORKSPACE/
 
-      - name: Publish macOS to public releases repo
+      - name: Upload macOS to release
         env:
-          GH_TOKEN: ${{ secrets.RELEASES_PAT }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release upload ${{ env.RELEASE_TAG }} hh_search_macos.zip \
-            --repo ${{ env.RELEASES_REPO }} --clobber
+          gh release upload ${{ env.RELEASE_TAG }} hh_search_macos.zip --clobber
