@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'package:http/http.dart' as http;
 import '../models/vacancy.dart';
 
@@ -12,12 +13,34 @@ class HhApiException implements Exception {
   String toString() => 'HhApiException: $message (HTTP $statusCode)';
 }
 
+/// Семафор для ограничения числа одновременных запросов.
+class _Semaphore {
+  _Semaphore(this._max);
+  final int _max;
+  int _active = 0;
+  final _queue = <Completer<void>>[];
+
+  Future<void> acquire() async {
+    if (_active < _max) { _active++; return; }
+    final c = Completer<void>();
+    _queue.add(c);
+    await c.future;
+    _active++;
+  }
+
+  void release() {
+    _active--;
+    if (_queue.isNotEmpty) _queue.removeAt(0).complete();
+  }
+}
+
 class HhApiService {
   static const String _baseUrl = 'https://api.hh.ru';
   static const String _tokenUrl = 'https://hh.ru/oauth/token';
   static const int _perPage = 100;
   static const int _maxPage = 19;
-  static const Duration _requestDelay = Duration(milliseconds: 300);
+  // Задержка только для поиска (сбор ID) — 1 поток, не перегружаем
+  static const Duration _searchDelay = Duration(milliseconds: 300);
 
   // Токен кешируется статически — один на всё приложение, не сбрасывается между запусками
   static String? _cachedToken;
@@ -175,7 +198,7 @@ class HhApiService {
       dateTo: toStr,
       area: area,
     );
-    await Future.delayed(_requestDelay);
+    await Future.delayed(_searchDelay);
 
     final found = (firstPage['found'] as num?)?.toInt() ?? 0;
     final maxFetchable = (_maxPage + 1) * _perPage; // 2000
@@ -253,7 +276,7 @@ class HhApiService {
           collectedIds.add(
               (item as Map<String, dynamic>)['id']?.toString() ?? '');
         }
-        await Future.delayed(_requestDelay);
+        await Future.delayed(_searchDelay);
         ctrl.add(SearchState(
           status: SearchStatus.collectingIds,
           totalExpected: totalExpected,
@@ -271,7 +294,7 @@ class HhApiService {
     }
   }
 
-  Future<VacancyFull?> fetchVacancyDetail(String id) async {
+  Future<VacancyFull?> fetchVacancyDetail(String id, {int attempt = 1}) async {
     final uri = Uri.parse('$_baseUrl/vacancies/$id');
     try {
       final response = await http.get(uri, headers: _headers);
@@ -280,8 +303,12 @@ class HhApiService {
             as Map<String, dynamic>;
         return VacancyFull.fromJson(data);
       } else if (response.statusCode == 429) {
-        await Future.delayed(const Duration(seconds: 10));
-        return fetchVacancyDetail(id);
+        if (attempt > 5) return null;
+        // Экспоненциальный откат + случайный джиттер чтобы параллельные
+        // запросы не навалились одновременно
+        final waitMs = (2000 * attempt) + Random().nextInt(1000);
+        await Future.delayed(Duration(milliseconds: waitMs));
+        return fetchVacancyDetail(id, attempt: attempt + 1);
       } else {
         return null;
       }
@@ -295,6 +322,7 @@ class HhApiService {
     String? area,
     required DateTime dateFrom,
     required DateTime dateTo,
+    int concurrency = 8,
   }) {
     final ctrl = StreamController<SearchState>();
 
@@ -345,7 +373,7 @@ class HhApiService {
           totalExpected: totalExpected,
           message: 'Всего в базе: $totalExpected вакансий',
         ));
-        await Future.delayed(_requestDelay);
+        await Future.delayed(_searchDelay);
       } catch (e) {
         ctrl.add(SearchState(
           status: SearchStatus.error,
@@ -406,29 +434,42 @@ class HhApiService {
         vacancies: const [],
       ));
 
-      // ── Шаг 4: Загрузка полных описаний ──────────────────────────────────
-      for (int i = 0; i < ids.length; i++) {
-        if (_cancelled) break;
-        while (_paused) {
-          await Future.delayed(const Duration(seconds: 1));
-          if (_cancelled) break;
-        }
+      // ── Шаг 4: Параллельная загрузка описаний ────────────────────────────
+      final sem = _Semaphore(concurrency);
+      int done = 0;
 
-        final vacancy = await fetchVacancyDetail(ids[i]);
-        if (vacancy != null) vacancies.add(vacancy);
-        await Future.delayed(_requestDelay);
+      final futures = ids.map((id) async {
+        await sem.acquire();
+        try {
+          // Пауза/отмена внутри потока
+          while (_paused) {
+            sem.release();
+            await Future.delayed(const Duration(seconds: 1));
+            await sem.acquire();
+          }
+          if (_cancelled) return;
 
-        if (i % 10 == 0 || i == ids.length - 1) {
-          ctrl.add(SearchState(
-            status: SearchStatus.fetchingDetails,
-            totalExpected: totalExpected,
-            totalIdsCollected: ids.length,
-            totalDetailsFetched: i + 1,
-            message: 'Загружено ${i + 1} из ${ids.length}',
-            vacancies: List.from(vacancies),
-          ));
+          final vacancy = await fetchVacancyDetail(id);
+          if (vacancy != null) vacancies.add(vacancy);
+        } finally {
+          sem.release();
+          done++;
+          // Обновляем UI каждые concurrency запросов или в конце
+          if (done % concurrency == 0 || done == ids.length) {
+            ctrl.add(SearchState(
+              status: SearchStatus.fetchingDetails,
+              totalExpected: totalExpected,
+              totalIdsCollected: ids.length,
+              totalDetailsFetched: done,
+              message:
+                  'Загружено $done из ${ids.length}  •  $concurrency потоков',
+              vacancies: List.from(vacancies),
+            ));
+          }
         }
-      }
+      }).toList();
+
+      await Future.wait(futures);
 
       ctrl.add(SearchState(
         status: SearchStatus.done,

@@ -25,6 +25,8 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
+  int _concurrency = 8;
+
   final _searchQueryCtrl = TextEditingController(
     text:
         'иностр* OR foreign OR English OR англ* OR зарубеж* OR A1 OR A2 OR B1 OR B2 OR C1 OR международ* OR перевод*',
@@ -119,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen>
           area: _areaCtrl.text.trim().isEmpty ? null : _areaCtrl.text.trim(),
           dateFrom: _dateFrom,
           dateTo: _dateTo,
+          concurrency: _concurrency,
         )
         .listen(
           (state) {
@@ -387,11 +390,78 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
           ]),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
+          _buildConcurrencyPicker(),
+          const SizedBox(height: 20),
           _buildActions(),
         ]),
       ),
     );
+  }
+
+  Widget _buildConcurrencyPicker() {
+    const options = [1, 3, 5, 8, 10];
+    final speeds = {1: '~3 req/s', 3: '~15 req/s', 5: '~25 req/s', 8: '~40 req/s', 10: '~50 req/s'};
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _label('ПАРАЛЛЕЛЬНЫХ ПОТОКОВ'),
+      const SizedBox(height: 8),
+      Row(children: options.map((n) {
+        final selected = _concurrency == n;
+        return Expanded(
+          child: GestureDetector(
+            onTap: _isRunning ? null : () => setState(() => _concurrency = n),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                gradient: selected
+                    ? const LinearGradient(colors: [_purple, _pink])
+                    : null,
+                color: selected ? null : const Color(0xFF1C1C3A),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? Colors.transparent
+                      : const Color(0xFF2D2D5E),
+                ),
+                boxShadow: selected
+                    ? [BoxShadow(
+                        color: _purple.withValues(alpha: 0.4),
+                        blurRadius: 8)]
+                    : [],
+              ),
+              child: Column(children: [
+                Text(
+                  '$n',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: selected ? Colors.white : const Color(0xFF7070A0),
+                  ),
+                ),
+              ]),
+            ),
+          ),
+        );
+      }).toList()),
+      const SizedBox(height: 4),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Icon(Icons.bolt, size: 11, color: _purple.withValues(alpha: 0.7)),
+        const SizedBox(width: 3),
+        Text(
+          speeds[_concurrency] ?? '',
+          style: TextStyle(fontSize: 10, color: _purple.withValues(alpha: 0.9)),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          _concurrency >= 8 ? '• быстро, но нагружает API' : '• стабильно',
+          style: const TextStyle(fontSize: 10, color: Color(0xFF555580)),
+        ),
+      ]),
+    ]);
   }
 
   Widget _buildActions() {
