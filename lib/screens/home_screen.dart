@@ -26,6 +26,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   int _concurrency = 8;
+  DateTime? _detailsStartTime;
 
   final _searchQueryCtrl = TextEditingController(
     text:
@@ -125,6 +126,14 @@ class _HomeScreenState extends State<HomeScreen>
         )
         .listen(
           (state) {
+            // Фиксируем момент начала загрузки описаний для точного ETA
+            if (state.status == SearchStatus.fetchingDetails &&
+                _detailsStartTime == null) {
+              _detailsStartTime = DateTime.now();
+            }
+            if (state.status != SearchStatus.fetchingDetails) {
+              _detailsStartTime = null;
+            }
             setState(() => _state = state);
             if (state.message.isNotEmpty) _addLog(state.message);
             if (state.errorMessage != null) {
@@ -1092,7 +1101,21 @@ class _HomeScreenState extends State<HomeScreen>
   String _estimateTime(SearchState s) {
     if (s.totalDetailsFetched == 0 || s.totalIdsCollected == 0) return '—';
     final remaining = s.totalIdsCollected - s.totalDetailsFetched;
-    final seconds = (remaining * 0.35).round();
+    if (remaining <= 0) return '—';
+
+    double secsPerVacancy;
+    final start = _detailsStartTime;
+    if (start != null && s.totalDetailsFetched > _concurrency) {
+      // Реальная скорость: elapsed / fetched
+      final elapsed =
+          DateTime.now().difference(start).inMilliseconds / 1000.0;
+      secsPerVacancy = elapsed / s.totalDetailsFetched;
+    } else {
+      // До первых замеров — грубая оценка по числу потоков
+      secsPerVacancy = 0.2 / _concurrency;
+    }
+
+    final seconds = (remaining * secsPerVacancy).round();
     if (seconds < 60) return '$seconds с';
     if (seconds < 3600) return '${(seconds / 60).round()} м';
     return '${(seconds / 3600).toStringAsFixed(1)} ч';
