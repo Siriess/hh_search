@@ -176,13 +176,18 @@ class _HomeScreenState extends State<HomeScreen>
     if (!_hasVacancies) return;
     try {
       _addLog('Открытие диалога сохранения CSV...');
-      final path = await ExportService.exportToCsv(_state.vacancies);
-      if (path == null) {
+      final paths = await ExportService.exportToCsv(_state.vacancies);
+      if (paths == null) {
         _addLog('Сохранение отменено');
         return;
       }
-      _addLog('CSV сохранён: $path');
-      _showSuccess('CSV сохранён:\n$path');
+      for (final p in paths) {
+        _addLog('CSV сохранён: $p');
+      }
+      final msg = paths.length == 1
+          ? 'CSV сохранён:\n${paths.first}'
+          : 'CSV разбит на ${paths.length} файла:\n${paths.first}\n...';
+      _showSuccess(msg);
     } catch (e) {
       _showError('Ошибка CSV: $e');
     }
@@ -192,13 +197,18 @@ class _HomeScreenState extends State<HomeScreen>
     if (!_hasVacancies) return;
     try {
       _addLog('Открытие диалога сохранения Excel...');
-      final path = await ExportService.exportToExcel(_state.vacancies);
-      if (path == null) {
+      final paths = await ExportService.exportToExcel(_state.vacancies);
+      if (paths == null) {
         _addLog('Сохранение отменено');
         return;
       }
-      _addLog('Excel сохранён: $path');
-      _showSuccess('Excel сохранён:\n$path');
+      for (final p in paths) {
+        _addLog('Excel сохранён: $p');
+      }
+      final msg = paths.length == 1
+          ? 'Excel сохранён:\n${paths.first}'
+          : 'Excel разбит на ${paths.length} файла:\n${paths.first}\n...';
+      _showSuccess(msg);
     } catch (e) {
       _showError('Ошибка Excel: $e');
     }
