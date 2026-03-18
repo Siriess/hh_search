@@ -323,6 +323,7 @@ class HhApiService {
     required DateTime dateFrom,
     required DateTime dateTo,
     int concurrency = 8,
+    int? limit,
   }) {
     final ctrl = StreamController<SearchState>();
 
@@ -424,13 +425,19 @@ class HhApiService {
         return;
       }
 
-      final ids = collectedIds.where((id) => id.isNotEmpty).toList();
+      final allIds = collectedIds.where((id) => id.isNotEmpty).toList();
+      // Применяем лимит на количество загружаемых вакансий
+      final ids = (limit != null && allIds.length > limit)
+          ? allIds.take(limit).toList()
+          : allIds;
       ctrl.add(SearchState(
         status: SearchStatus.fetchingDetails,
         totalExpected: totalExpected,
         totalIdsCollected: ids.length,
         totalDetailsFetched: 0,
-        message: 'Найдено ${ids.length} ID. Загрузка описаний...',
+        message: limit != null
+            ? 'Найдено ${allIds.length} ID. Загрузка первых $limit...'
+            : 'Найдено ${ids.length} ID. Загрузка описаний...',
         vacancies: const [],
       ));
 

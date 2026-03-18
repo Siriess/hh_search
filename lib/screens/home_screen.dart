@@ -33,6 +33,7 @@ class _HomeScreenState extends State<HomeScreen>
         'иностр* OR foreign OR English OR англ* OR зарубеж* OR A1 OR A2 OR B1 OR B2 OR C1 OR международ* OR перевод*',
   );
   final _areaCtrl = TextEditingController();
+  final _limitCtrl = TextEditingController();
   final _logScrollCtrl = ScrollController();
   late final TabController _tabCtrl;
 
@@ -63,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen>
     _subscription?.cancel();
     _searchQueryCtrl.dispose();
     _areaCtrl.dispose();
+    _limitCtrl.dispose();
     _logScrollCtrl.dispose();
     _tabCtrl.dispose();
     super.dispose();
@@ -111,6 +113,12 @@ class _HomeScreenState extends State<HomeScreen>
       _showError('Введите поисковый запрос');
       return;
     }
+    final limitText = _limitCtrl.text.trim();
+    final limit = limitText.isEmpty ? null : int.tryParse(limitText);
+    if (limitText.isNotEmpty && limit == null) {
+      _showError('Лимит должен быть числом');
+      return;
+    }
     _log.clear();
     setState(() => _state = const SearchState());
     _apiService =
@@ -123,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen>
           dateFrom: _dateFrom,
           dateTo: _dateTo,
           concurrency: _concurrency,
+          limit: limit,
         )
         .listen(
           (state) {
@@ -362,6 +371,21 @@ class _HomeScreenState extends State<HomeScreen>
             style: const TextStyle(fontSize: 13, color: Color(0xFFCCCCEE)),
             decoration: const InputDecoration(
               hintText: 'пусто = вся Россия  |  2 = СПб  |  1 = МСК',
+            ),
+          ),
+          const SizedBox(height: 14),
+          _label('ЛИМИТ ВАКАНСИЙ'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _limitCtrl,
+            enabled: !_isRunning,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            style: const TextStyle(fontSize: 13, color: Color(0xFFCCCCEE)),
+            decoration: const InputDecoration(
+              hintText: 'пусто = без ограничений',
+              prefixIcon: Icon(Icons.filter_list_rounded,
+                  size: 16, color: Color(0xFF555580)),
             ),
           ),
           const SizedBox(height: 14),
@@ -647,39 +671,43 @@ class _HomeScreenState extends State<HomeScreen>
   }) {
     return Expanded(
       child: GlassCard(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         glowColor: colors.first,
-        child: Row(children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: colors),
-              borderRadius: BorderRadius.circular(9),
-              boxShadow: [
-                BoxShadow(
-                    color: colors.first.withValues(alpha: 0.4), blurRadius: 10)
-              ],
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: colors),
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                      color: colors.first.withValues(alpha: 0.4),
+                      blurRadius: 8)
+                ],
+              ),
+              child: Icon(icon, color: Colors.white, size: 16),
             ),
-            child: Icon(icon, color: Colors.white, size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white)),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 10, color: Color(0xFF7070A0))),
-              ],
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white)),
             ),
-          ),
-        ]),
+            Text(label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 10, color: Color(0xFF7070A0))),
+          ],
+        ),
       ),
     );
   }
